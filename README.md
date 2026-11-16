@@ -15,7 +15,7 @@ lights the way back, while a buzzer sounds when you're there:
 | buzzer | you're within ±50 px | 9 |
 
 A push button on pin 2 forgets the target and starts over. (The 2024 README
-listed different pins. The table above is what `origin/Arduino/Indicate.ino`
+listed different pins. The table above is what `origin/Indicate/Indicate.ino`
 actually does.)
 
 It worked on my desk. But nothing about it was ever measured, and it's a
@@ -67,18 +67,53 @@ on a gate from a camera: a detector that updates slowly, a delay before the
 thrusters respond, and a controller that has to brake before it arrives.
 Later vehicles taught me that properly. This four-LED rig taught it first.
 
+## v2: the rig, rebuilt with a "slow down"
+
+The fix the simulation points at is cheap: dim the LEDs in proportion to the
+error. Building it on a real Uno meets two pieces of silicon trivia that are
+worth knowing:
+
+- **PWM only exists on pins 3, 5, 6, 9, 10 and 11.** v1 had white and blue on
+  12 and 13, which can only be on or off. You can't dim a pin that can't PWM.
+- **`tone()` borrows Timer2, which also drives PWM on pins 3 and 11.** The
+  buzzer and a dimmable green LED on 11 can't coexist. So green moves to 9 and
+  the buzzer to 3, where losing PWM costs nothing.
+
+| LED | means | v1 pin | v2 pin |
+|---|---|---:|---:|
+| red | move left | 10 | 10 |
+| green | move right | 11 | **9** |
+| white | move up | 12 | **6** |
+| blue | move down | 13 | **5** |
+| buzzer | you're there | 9 | **3** |
+
+- [`rig/fourleds_v2/fourleds_v2.ino`](rig/fourleds_v2/fourleds_v2.ino): reads
+  `E <dx> <dy>` lines (signed error, % of "far"), sets each LED's brightness from
+  its share of the error, sounds the buzzer inside the zone, and goes dark if the
+  laptop stops talking for 400 ms rather than show a stale direction. 6,564 bytes
+  on an Uno.
+- [`rig/main_v2.py`](rig/main_v2.py): YOLOv8 for the bottle, the same hold-still-3-s
+  ideal spot, sends the proportional error, `--dry-run` without an Arduino.
+- `tests/test_rig.py` pins the protocol and keeps the 2024 precedence bug on
+  record, reproduced verbatim.
+
 ## Run it
 
 ```bash
 python -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
-python -m fourleds.run       # ~15 s, prints the table, rewrites assets/*.png
+python -m fourleds.run       # ~15 s, the human-in-the-loop study, rewrites assets/*.png
+pytest -q                    # the v2 protocol, and the v1 bug, on record
+
+arduino-cli compile -b arduino:avr:uno rig/fourleds_v2
+pip install ultralytics pyserial && python rig/main_v2.py --port /dev/ttyUSB0
 ```
 
 ## The original rig
 
-`origin/main.py` and `origin/Arduino/Indicate.ino` are the 2024 code, with
-pinned requirements in `origin/requirements.txt`. `torch.hub` fetches YOLOv5
-on first run. One bug is left in place on purpose: a missing pair of parentheses
-in `main.py` sends `leftdown` instead of `left,down`. It works anyway, because
-the Arduino only checks whether each word appears.
+`origin/main.py` and `origin/Indicate/Indicate.ino` are the 2024 code, with
+pinned requirements in `origin/requirements.txt`, and `README-2024.md` is its
+README. `torch.hub` fetches YOLOv5 on first run. The precedence bug is left
+in place there on purpose: `main.py` sends `leftdown` instead of `left,down`.
+It works anyway, because the Arduino only checks whether each word appears.
+Two bugs cancelling out is still two bugs.
