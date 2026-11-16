@@ -1,49 +1,84 @@
-# Object Tracking and Feedback System
+# four-leds
 
-This project merges the capabilities of computer vision and microcontroller programming to create a dynamic system that tracks an object's position and provides immediate feedback through visual signals (LEDs) and sound (buzzer). It's perfect for educational purposes, hobbyist projects, or anyone interested in exploring the intersection of software and hardware.
+**Can a person steer a camera onto a target when the only feedback is four LEDs?**
 
-## Features
+April 2024: a laptop runs YOLOv5 on a webcam, finds a bottle and remembers
+where it sat still for three seconds. Move the camera away and an Arduino
+lights the way back, while a buzzer sounds when you're there:
 
-- **Real-Time Object Detection:** Leverages a pre-trained YOLOv5 model for accurate detection within the camera's view.
-- **Interactive Feedback:** Utilizes LEDs for directional feedback and a buzzer for distance-related auditory signals.
-- **Dynamic State Reset:** Incorporates a push button to allow users to redefine the "ideal state" dynamically.
+| LED | means | pin |
+|---|---|---|
+| red | move left | 10 |
+| green | move right | 11 |
+| white | move up | 12 |
+| blue | move down | 13 |
+| buzzer | you're within ±50 px | 9 |
 
-## Getting Started
+A push button on pin 2 forgets the target and starts over. (The 2024 README
+listed different pins. The table above is what `origin/Arduino/Indicate.ino`
+actually does.)
 
-### Prerequisites
+It worked on my desk. But nothing about it was ever measured, and it's a
+control loop: the *sensor* is a neural net, the *controller* is a person, and
+the *signal* between them is four bits. Control loops can be analysed.
 
-- A computer with Python 3.x installed.
-- Arduino IDE for uploading the sketch to the Arduino board.
-- A USB webcam or a camera module that can be accessed by OpenCV.
-- An Arduino board (Uno, Mega, etc.), LEDs, buzzer, push button, resistors, breadboard, and jumper wires.
+## The person, as a control-theory textbook would draw them
 
-### Hardware Setup
+They see the LEDs ~250 ms late (a typical visual reaction time), move the
+camera at a comfortable ~600 px/s in whichever direction is lit, and their
+hand shakes a little. Detections arrive at ~15 Hz. Each zone size gets 200
+tries from random starting points.
 
-1. **LEDs:** Connect each LED through a resistor to specified PWM pins on Arduino (Red: 9, Green: 10, White: 11, Blue: 6) and their other legs to GND.
-2. **Buzzer:** Attach the positive leg to pin 5 and the negative leg to GND on the Arduino.
-3. **Push Button:** Link one leg to pin 2 and the other directly to GND. This will use Arduino's internal pull-up resistor.
+Two displays are compared:
 
-### Software Installation
+- **bang-bang (2024).** Each LED is on or off.
+- **proportional.** The same LEDs, PWM-dimmed with the size of the error, so
+  the person slows down as they approach.
 
-1. **Arduino Sketch:**
-   - Open the Arduino IDE, load the provided `.ino` file, select the correct board and port under the Tools menu, and upload the sketch to your Arduino.
+![Settling time and failure rate against the size of the buzzer zone](assets/deadband_sweep.png)
 
-2. **Python Environment Setup:**
-   - It's recommended to use a virtual environment to avoid conflicts with other projects or system-wide packages. Navigate to your project directory in the terminal and run:
-     ```bash
-     python3 -m venv venv
-     ```
-   - Activate the virtual environment:
-     - On Windows: `venv\Scripts\activate`
-     - On macOS/Linux: `source venv/bin/activate`
-   - Install the required Python libraries:
-     ```bash
-     pip install opencv-python numpy pyserial torch torchvision torchaudio
-     ```
+| buzzer zone | bang-bang: never settled | proportional: never settled | proportional: median settle |
+|---:|---:|---:|---:|
+| ±20 px | 99.5 % | 99.5 % | — |
+| ±30 px | 97.5 % | 6.5 % | 3.34 s |
+| **±50 px (2024)** | **95.5 %** | **2.0 %** | **1.04 s** |
+| ±75 px | 81.0 % | 0.0 % | 0.52 s |
+| ±100 px | 0.5 % | 0.5 % | 0.50 s |
 
-### Running the System
+![One try at the 2024 zone and at a tight zone](assets/one_try.png)
 
-- With the Arduino connected and the virtual environment activated, run the Python script:
-  ```bash
-  python main.py
+## Why it hunts
 
+The arithmetic fits on a sticky note. At 600 px/s with a 250 ms delay, the
+camera travels **150 px** after the LED changes and before the hand does. The
+2024 zone is only 100 px wide, so a person who obeys the LEDs exactly sails
+straight through, sees the opposite LED, and sails back. Forever. The LEDs
+never said *slow down*; real people only managed because they slowed down on
+their own.
+
+Dimming the LEDs adds the missing *slow down* and the loop settles. Until you
+shrink the zone too far: at ±20 px even the proportional display oscillates.
+Its effective gain (600 px/s over an 80 px ramp, 7.5 s⁻¹) times the 0.25 s
+delay is about 1.9, past the ~π/2 where a delayed loop stops being stable.
+The fix there is lower gain, not more LEDs.
+
+This is the same problem an underwater vehicle has when it centres itself
+on a gate from a camera: a detector that updates slowly, a delay before the
+thrusters respond, and a controller that has to brake before it arrives.
+Later vehicles taught me that properly. This four-LED rig taught it first.
+
+## Run it
+
+```bash
+python -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt
+python -m fourleds.run       # ~15 s, prints the table, rewrites assets/*.png
+```
+
+## The original rig
+
+`origin/main.py` and `origin/Arduino/Indicate.ino` are the 2024 code, with
+pinned requirements in `origin/requirements.txt`. `torch.hub` fetches YOLOv5
+on first run. One bug is left in place on purpose: a missing pair of parentheses
+in `main.py` sends `leftdown` instead of `left,down`. It works anyway, because
+the Arduino only checks whether each word appears.
