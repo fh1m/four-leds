@@ -1,0 +1,22 @@
+README-2024.md
+  h_f1b9066eb9899c 1-49
+requirements.txt
+  h_f1b9066eb9899c 3-4
+rig/fourleds_v2/fourleds_v2.ino
+  h_f1b9066eb9899c 1-66
+rig/main_v2.py
+  h_f1b9066eb9899c 1-104
+tests/test_rig.py
+  h_f1b9066eb9899c 1-25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "4e622394aa0769177cabf4c74e8c11df1de68b07",
+  "prompts": {},
+  "humans": {
+    "h_f1b9066eb9899c": {
+      "author": "fh1m <fahim.2002.faisal@gmail.com>"
+    }
+  }
+}
